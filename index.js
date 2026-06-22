@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const { authMiddleware } = require("./middleware");
@@ -20,7 +22,6 @@ app.post("/signup", async(req, res)=>{
 
     const userExists = await userModel.findOne({
         username: username,
-        password: password
     })
 
     if(userExists){
@@ -64,7 +65,7 @@ app.post("/signin", async(req, res)=>{
 
     const token = jwt.sign({
         userId: userExists.id
-    }, "token");
+    }, process.env.JWT_SECRET);
 
     res.json({
         token: token
@@ -72,48 +73,60 @@ app.post("/signin", async(req, res)=>{
 
 });
 
-app.post("/todo", authMiddleware, (req,res)=>{
+app.post("/todo", authMiddleware, async (req,res)=>{
     const userId = req.userId;
     const title = req.body.title;
     const description = req.body.description;
 
-    TODOS.push({
-        id: TODO_ID++,
+    const newTodo = await todoModel.create({
         title: title,
         description: description,
         userId: userId
     });
 
+    // TODOS.push({
+    //     id: TODO_ID++,
+    //     title: title,
+    //     description: description,
+    //     userId: userId
+    // });
+
     res.json({
-        message: "Todo made"
+        todoid: newTodo._id
     });
 });
 
-app.delete("/todo/:todoId", authMiddleware, (req,res)=>{
+app.delete("/todo/:todoId", authMiddleware, async (req,res)=>{
     const userId = req.userId;
-    const todoId = parseInt(req.params.todoId);
+    const todoId = req.params.todoId;
 
-    const ownsTodo = TODOS.find(todo => todo.id === todoId && todo.userId === userId);
+    // const ownsTodo = TODOS.find(todo => todo.id === todoId && todo.userId === userId);
 
-    if(ownsTodo){
-        TODOS = TODOS.filter(t => t.id !== todoId);
-        return res.json({
-            message: "Deleted"
-        });
-    }else{
+    const deleteTodo = await todoModel.findOneAndDelete({
+        _id: todoId,
+        userId: userId
+    });
+
+    if(!deleteTodo){
         return res.status(411).json({
             message: "Either todo doesnt exist or this is not your todo"
         });
     }
 
+    res.json({
+        message: "Todo deleted"
+    });
 });
 
-app.get("/todos", authMiddleware, (req, res)=>{
+app.get("/todos", authMiddleware, async (req, res)=>{
     const userId = req.userId;
-    const todosList = TODOS.filter(t => t.userId === userId );
+    const todosList = await todoModel.find({
+        userId: userId
+    });
+
     res.json({
         todos: todosList
     });
 });
 
-app.listen(3000);
+app.listen(process.env.PORT);
