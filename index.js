@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { authMiddleware } = require("./middleware");
 const {userModel, todoModel} = require("./models");
@@ -15,24 +16,29 @@ app.use(express.json());
 // let USERS = [];
 // let TODOS = [];
 
-const { signupSchema, signinSchema } = z.object({
+const signupSchema = z.object({
     username: z.string().min(3),
     password: z.string().min(6)
 });
 
-const { todoSchema } = z.object({
-    title: z.string().max(20).min(5),
-    description: z.string().max(50).min(10)
+const signinSchema = z.object({
+    username: z.string().min(3),
+    password: z.string().min(6)
+});
+
+const todoSchema = z.object({
+    title: z.string().min(5).max(20),
+    description: z.string().min(10).max(50)
 });
 
 app.post("/signup", async(req, res)=>{
     
-    const {data, success, err} = signupSchema.safeParse(req.body);
+    const {data, success, error} = signupSchema.safeParse(req.body);
 
     if(!success){
-        return res.status(403).json({
+        return res.status(400).json({
             message: "Incorrect credentails",
-            error: JSON.parse(err)
+            error: error.issues
         });
     }
 
@@ -56,9 +62,11 @@ app.post("/signup", async(req, res)=>{
     //     password: password
     // });
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const newUser = await userModel.create({
         username: username,
-        password: password
+        password: hashedPassword
     });
 
     res.json({
@@ -68,22 +76,21 @@ app.post("/signup", async(req, res)=>{
 
 app.post("/signin", async(req, res)=>{
 
-    const {data, success, err} = signinSchema.safeParse(req.body);
+    const {data, success, error} = signinSchema.safeParse(req.body);
 
     if(!success){
-        return res.status(403).json({
+        return res.status(400).json({
             message: "Inncorect credentails",
-            error: JSON.parse(err)
+            error: error.issues
         });
     }
 
     const {username, password} = data;
-
+    
     // const userExists = USERS.find(u => u.username === username && u.password === password);
-
+    
     const userExists = await userModel.findOne({
         username: username,
-        password: password
     });
 
     if(!userExists){
@@ -92,8 +99,16 @@ app.post("/signin", async(req, res)=>{
         });
     }
 
+    const correctPassword = await bcrypt.compare(password, userExists.password);
+
+    if(!correctPassword){
+        return res.status(403).json({
+            message: "Incorret password"
+        });
+    }
+
     const token = jwt.sign({
-        userId: userExists.id
+        userId: userExists._id
     }, process.env.JWT_SECRET);
 
     res.json({
@@ -105,12 +120,12 @@ app.post("/signin", async(req, res)=>{
 app.post("/todo", authMiddleware, async (req,res)=>{
     const userId = req.userId;
 
-    const {data, success, err} = todoSchema.safeParse(req.body);
+    const {data, success, error} = todoSchema.safeParse(req.body);
 
     if(!success){
-        return res.status(403).json({
+        return res.status(400).json({
             message:"Incorrect data",
-            error: JSON.parse(err)
+            error: error.issues
         });
     }
 
@@ -130,7 +145,7 @@ app.post("/todo", authMiddleware, async (req,res)=>{
     // });
 
     res.json({
-        todoid: newTodo._id
+        todoId: newTodo._id
     });
 });
 
